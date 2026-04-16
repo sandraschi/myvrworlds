@@ -11,8 +11,14 @@ export default defineConfig({
     },
   },
   server: {
-    port: 3001,
+    port: 11101, // MyVRWorlds: VR MCP Control Center
     host: true,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:11102',
+        changeOrigin: true,
+      },
+    },
   },
   build: {
     outDir: 'dist',

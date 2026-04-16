@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -7,7 +8,6 @@ import {
   Mic,
   MicOff,
   Volume2,
-  VolumeX,
   Bot,
   User,
   Settings,
@@ -27,16 +27,23 @@ interface Message {
   responseType?: string
 }
 
+const SpeechRecognitionAPI =
+  typeof window !== 'undefined' && (window.SpeechRecognition || (window as unknown as { webkitSpeechRecognition?: typeof SpeechRecognition }).webkitSpeechRecognition)
+    ? (window.SpeechRecognition || (window as unknown as { webkitSpeechRecognition: typeof SpeechRecognition }).webkitSpeechRecognition)
+    : null
+
 const AIChatbot: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([])
   const [isListening, setIsListening] = useState(false)
-  const [isSpeaking, setIsSpeaking] = useState(false)
+  const [isGenerating, setIsGenerating] = useState(false)
   const [characterState, setCharacterState] = useState<'wandering' | 'conversing' | 'performing'>('wandering')
-  const [wakeWordDetected, setWakeWordDetected] = useState(false)
-  const [currentLLMConfig, setCurrentLLMConfig] = useState<any>(null)
+  const [currentLLMConfig, setCurrentLLMConfig] = useState<Record<string, unknown> | null>(null)
   const [showLLMConfig, setShowLLMConfig] = useState(false)
   const { toast } = useToast()
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const recognitionRef = useRef<InstanceType<NonNullable<typeof SpeechRecognitionAPI>> | null>(null)
+
+  const isSupported = !!SpeechRecognitionAPI
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -47,94 +54,98 @@ const AIChatbot: React.FC = () => {
   }, [messages])
 
   useEffect(() => {
-    // Load saved LLM configuration
     const savedConfig = localStorage.getItem('myvrworlds-llm-config')
     if (savedConfig) {
       try {
-        const config = JSON.parse(savedConfig)
+        const config = JSON.parse(savedConfig) as Record<string, unknown>
         setCurrentLLMConfig(config)
-        llmService.configure(config)
+        llmService.configure(config as Parameters<typeof llmService.configure>[0])
       } catch (error) {
         console.error('Error loading LLM config:', error)
       }
     }
   }, [])
 
-  const simulateDualSTT = async () => {
-    if (!isListening) return
+  const handleVoiceToggle = () => {
+    if (!isSupported) {
+      toast({ title: 'Not Supported', description: 'Web Speech API not available. Use Chrome or Edge.', variant: 'destructive' })
+      return
+    }
+    if (!llmService.getConfig()) {
+      toast({ title: 'LLM Not Configured', description: 'Configure an LLM in Settings first.', variant: 'destructive' })
+      return
+    }
 
-    // Simulate wake word detection with Sphinx (fast)
-    setTimeout(() => {
-      setWakeWordDetected(true)
-      toast({
-        title: "Wake Word Detected",
-        description: "Sphinx detected 'ringo' - switching to Google Cloud for accurate transcription",
-      })
-    }, 1000)
+    if (isListening) {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop()
+        recognitionRef.current = null
+      }
+      setIsListening(false)
+      setCharacterState('wandering')
+      toast({ title: 'Voice Control Deactivated', description: 'Stopped listening.' })
+      return
+    }
 
-    // Simulate full transcription with Google Cloud (accurate)
-    setTimeout(() => {
+    const Recognition = SpeechRecognitionAPI!
+    const recognition = new Recognition()
+    recognition.continuous = true
+    recognition.interimResults = true
+    recognition.lang = 'en-US'
+
+    recognition.onresult = async (event: SpeechRecognitionEvent) => {
+      let finalTranscript = ''
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const res = event.results[i]
+        if (res.isFinal) finalTranscript += res[0].transcript
+      }
+      if (!finalTranscript.trim()) return
+
+      recognition.stop()
+      recognitionRef.current = null
+      setIsListening(false)
+      setCharacterState('conversing')
+
       const userMessage: Message = {
         id: Date.now().toString(),
         type: 'user',
-        content: "Hello ringo, can you tell me about VRChat?",
+        content: finalTranscript.trim(),
         timestamp: new Date()
       }
-      setMessages(prev => [...prev, userMessage])
-      setCharacterState('conversing')
-      setWakeWordDetected(false)
+      setMessages((prev) => [...prev, userMessage])
 
-      // Generate AI response using configured LLM
-      setTimeout(async () => {
-        try {
-          const llmResponse = await llmService.generateStructuredResponse(
-            userMessage.content,
-            "ringo"
-          )
-
-          const aiResponse: Message = {
-            id: (Date.now() + 1).toString(),
-            type: 'assistant',
-            content: llmResponse.content,
-            timestamp: new Date(),
-            responseType: llmResponse.responseType
-          }
-          setMessages(prev => [...prev, aiResponse])
-          setIsSpeaking(true)
-
-          // Simulate speech completion
-          setTimeout(() => {
-            setIsSpeaking(false)
-          }, 3000)
-        } catch (error) {
-          console.error('Error generating AI response:', error)
-          toast({
-            title: "AI Response Error",
-            description: "Failed to generate AI response. Check LLM configuration.",
-            variant: "destructive"
-          })
+      setIsGenerating(true)
+      try {
+        const llmResponse = await llmService.generateStructuredResponse(userMessage.content, 'ringo')
+        const responseType = llmResponse.content.split(' ')[0]
+        const aiResponse: Message = {
+          id: (Date.now() + 1).toString(),
+          type: 'assistant',
+          content: llmResponse.content,
+          timestamp: new Date(),
+          responseType
         }
-      }, 1500)
-    }, 2000)
-  }
-
-  const handleVoiceToggle = () => {
-    if (!isListening) {
-      setIsListening(true)
-      toast({
-        title: "Voice Control Activated",
-        description: "Sphinx wake-word detection active. Say 'ringo' to start conversation.",
-      })
-      simulateDualSTT()
-    } else {
-      setIsListening(false)
-      setWakeWordDetected(false)
-      setCharacterState('wandering')
-      toast({
-        title: "Voice Control Deactivated",
-        description: "Character returned to wandering state",
-      })
+        setMessages((prev) => [...prev, aiResponse])
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'LLM error'
+        toast({ title: 'AI Response Error', description: msg, variant: 'destructive' })
+      } finally {
+        setIsGenerating(false)
+      }
     }
+
+    recognition.onerror = (event: Event & { error?: string }) => {
+      const err = (event as { error?: string }).error
+      if (err === 'no-speech') return
+      toast({ title: 'Recognition Error', description: err ?? 'Unknown error', variant: 'destructive' })
+      setIsListening(false)
+      recognitionRef.current = null
+    }
+
+    recognition.start()
+    recognitionRef.current = recognition
+    setIsListening(true)
+    toast({ title: 'Voice Control Active', description: 'Speak and AI will respond when you stop.' })
   }
 
   const getStateColor = (state: string) => {
@@ -148,46 +159,39 @@ const AIChatbot: React.FC = () => {
 
   const getStateDescription = (state: string) => {
     switch (state) {
-      case 'wandering': return 'Random movements, listening for wake word'
-      case 'conversing': return 'Active conversation, processing voice input'
-      case 'performing': return 'Executing physical actions (movement, gestures)'
+      case 'wandering': return 'Waiting for voice input'
+      case 'conversing': return 'Processing conversation'
+      case 'performing': return 'Executing actions'
       default: return 'Unknown state'
     }
   }
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="text-center space-y-4">
         <h1 className="text-3xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
           AI Chatbot Control
         </h1>
         <p className="text-gray-300 max-w-2xl mx-auto">
-          ikubaysan-inspired dual STT architecture with character state machine.
-          Features Sphinx wake-word detection + Google Cloud accurate transcription.
+          Voice-controlled AI chatbot using Web Speech API and ikubaysan response format.
         </p>
       </div>
 
-      {/* LLM Provider Info */}
       {currentLLMConfig && (
         <Card className="bg-black/20 backdrop-blur-md border-white/10">
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
               <Brain className="h-5 w-5 text-purple-400" />
-              <span>AI Provider: {LLMService.PROVIDERS[currentLLMConfig.provider]?.name || currentLLMConfig.provider}</span>
+              <span>AI Provider: {LLMService.PROVIDERS[String(currentLLMConfig.provider)]?.name ?? String(currentLLMConfig.provider)}</span>
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="flex items-center space-x-4 text-sm">
               <Badge variant="outline" className="bg-purple-600/20 text-purple-400">
-                {LLMService.PROVIDERS[currentLLMConfig.provider]?.type === 'local' ? '🏠 Local' : '☁️ Cloud'}
+                {LLMService.PROVIDERS[String(currentLLMConfig.provider)]?.type === 'local' ? 'Local' : 'Cloud'}
               </Badge>
-              <span>Model: {currentLLMConfig.model}</span>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setShowLLMConfig(!showLLMConfig)}
-              >
+              <span>Model: {String(currentLLMConfig.model)}</span>
+              <Button variant="ghost" size="sm" onClick={() => setShowLLMConfig(!showLLMConfig)}>
                 <Settings className="h-4 w-4 mr-1" />
                 Configure
               </Button>
@@ -196,7 +200,7 @@ const AIChatbot: React.FC = () => {
               <div className="mt-4">
                 <LLMConfig
                   compact
-                  initialConfig={currentLLMConfig}
+                  initialConfig={currentLLMConfig as import('@/services/llmService').LLMConfig}
                   onConfigChange={(config) => {
                     setCurrentLLMConfig(config)
                     llmService.configure(config)
@@ -209,7 +213,17 @@ const AIChatbot: React.FC = () => {
         </Card>
       )}
 
-      {/* Status Cards */}
+      {!currentLLMConfig && (
+        <Card className="bg-black/20 backdrop-blur-md border-white/10 border-amber-500/50">
+          <CardContent className="pt-6">
+            <p className="text-amber-400 mb-4">Configure an LLM in Settings to use the AI chatbot.</p>
+            <Button variant="vr" asChild>
+              <Link to="/settings">Go to Settings</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card className="bg-black/20 backdrop-blur-md border-white/10">
           <CardHeader>
@@ -237,20 +251,9 @@ const AIChatbot: React.FC = () => {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-sm">Sphinx Wake-Word</span>
-                <Badge variant={isListening ? "default" : "secondary"} className="bg-green-600/20">
-                  {isListening ? "Active" : "Inactive"}
-                </Badge>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm">Google Cloud STT</span>
-                <Badge variant={wakeWordDetected ? "default" : "secondary"} className="bg-blue-600/20">
-                  {wakeWordDetected ? "Processing" : "Standby"}
-                </Badge>
-              </div>
-            </div>
+            <Badge variant={isListening ? 'default' : 'secondary'} className="bg-green-600/20">
+              {isListening ? 'Listening' : isGenerating ? 'Generating' : 'Idle'}
+            </Badge>
           </CardContent>
         </Card>
 
@@ -258,51 +261,47 @@ const AIChatbot: React.FC = () => {
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
               <Volume2 className="h-5 w-5" />
-              <span>Audio Output</span>
+              <span>Status</span>
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex items-center space-x-3">
-              <div className={`w-3 h-3 rounded-full ${isSpeaking ? 'bg-green-500 animate-pulse' : 'bg-gray-500'}`} />
-              <span className="text-sm">{isSpeaking ? 'Speaking' : 'Silent'}</span>
-            </div>
+            <span className="text-sm">{isGenerating ? 'AI responding...' : 'Ready'}</span>
           </CardContent>
         </Card>
       </div>
 
-      {/* Control Panel */}
       <Card className="bg-black/20 backdrop-blur-md border-white/10">
         <CardHeader>
           <CardTitle>Voice Control Panel</CardTitle>
           <CardDescription>
-            Dual STT Architecture: Fast wake-word detection (Sphinx) → Accurate transcription (Google Cloud)
+            Use Web Speech API for voice input. Speak, then stop for AI to respond.
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-4 flex-wrap">
             <Button
-              variant={isListening ? "destructive" : "vr"}
+              variant={isListening ? 'destructive' : 'vr'}
               onClick={handleVoiceToggle}
+              disabled={!currentLLMConfig || !isSupported || isGenerating}
               className="flex items-center space-x-2"
             >
               {isListening ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
               <span>{isListening ? 'Stop Listening' : 'Start Voice Control'}</span>
             </Button>
-
-            <Button variant="outline" className="flex items-center space-x-2">
-              <Settings className="h-5 w-5" />
-              <span>Configure STT</span>
-            </Button>
-
-            <div className="flex items-center space-x-2 text-sm text-gray-400">
-              <Zap className="h-4 w-4" />
-              <span>Response Types: TYPE_NORMAL, TYPE_ENDING, TYPE_YES, TYPE_NO, TYPE_CMD</span>
-            </div>
+            <Link to="/settings">
+              <Button variant="outline" className="flex items-center space-x-2">
+                <Settings className="h-5 w-5" />
+                <span>Configure LLM</span>
+              </Button>
+            </Link>
+            <span className="text-sm text-gray-400">
+              <Zap className="h-4 w-4 inline mr-1" />
+              Response Types: TYPE_NORMAL, TYPE_ENDING, TYPE_YES, TYPE_NO, TYPE_CMD
+            </span>
           </div>
         </CardContent>
       </Card>
 
-      {/* Chat Interface */}
       <Card className="bg-black/20 backdrop-blur-md border-white/10">
         <CardHeader>
           <CardTitle className="flex items-center space-x-2">
@@ -310,7 +309,7 @@ const AIChatbot: React.FC = () => {
             <span>Conversation Log</span>
           </CardTitle>
           <CardDescription>
-            Real-time chat with structured AI responses and state machine feedback
+            Voice-driven chat with ikubaysan structured responses
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -318,8 +317,8 @@ const AIChatbot: React.FC = () => {
             {messages.length === 0 ? (
               <div className="text-center text-gray-500 py-8">
                 <Bot className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                <p>Say "ringo" to start a conversation</p>
-                <p className="text-sm mt-2">Character is currently wandering...</p>
+                <p>Click Start Voice Control and speak to begin</p>
+                <p className="text-sm mt-2">Configure an LLM in Settings first</p>
               </div>
             ) : (
               messages.map((message) => (
@@ -335,18 +334,10 @@ const AIChatbot: React.FC = () => {
                     }`}
                   >
                     <div className="flex items-center space-x-2 mb-1">
-                      {message.type === 'user' ? (
-                        <User className="h-4 w-4" />
-                      ) : (
-                        <Bot className="h-4 w-4" />
-                      )}
-                      <span className="text-xs opacity-75">
-                        {message.timestamp.toLocaleTimeString()}
-                      </span>
+                      {message.type === 'user' ? <User className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
+                      <span className="text-xs opacity-75">{message.timestamp.toLocaleTimeString()}</span>
                       {message.responseType && (
-                        <Badge variant="outline" className="text-xs">
-                          {message.responseType}
-                        </Badge>
+                        <Badge variant="outline" className="text-xs">{message.responseType}</Badge>
                       )}
                     </div>
                     <p className="text-sm">{message.content}</p>
@@ -355,38 +346,6 @@ const AIChatbot: React.FC = () => {
               ))
             )}
             <div ref={messagesEndRef} />
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Architecture Info */}
-      <Card className="bg-black/20 backdrop-blur-md border-white/10">
-        <CardHeader>
-          <CardTitle>ikubaysan Dual STT Architecture</CardTitle>
-          <CardDescription>
-            Revolutionary voice processing pipeline for VR AI characters
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <h4 className="font-semibold mb-2">Phase 1: Wake Word Detection</h4>
-              <ul className="text-sm text-gray-400 space-y-1">
-                <li>• PocketSphinx: Fast, offline wake word detection</li>
-                <li>• Low CPU usage, always listening</li>
-                <li>• Keyword spotting for character names</li>
-                <li>• Triggers transition to conversation state</li>
-              </ul>
-            </div>
-            <div>
-              <h4 className="font-semibold mb-2">Phase 2: Accurate Transcription</h4>
-              <ul className="text-sm text-gray-400 space-y-1">
-                <li>• Google Cloud Speech: High accuracy STT</li>
-                <li>• Activated only after wake word detection</li>
-                <li>• Full sentence processing with context</li>
-                <li>• Supports multiple languages</li>
-              </ul>
-            </div>
           </div>
         </CardContent>
       </Card>

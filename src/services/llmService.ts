@@ -1,7 +1,7 @@
 /**
  * LLM Service for MyVRWorlds
  *
- * Integrates with the myai LLM integration system to support multiple providers:
+ * Real API integration for multiple providers:
  * - Local: Ollama, LM Studio
  * - Cloud: OpenAI, Anthropic, Google Gemini
  */
@@ -38,7 +38,6 @@ export class LLMService {
   private static instance: LLMService
   private currentConfig: LLMConfig | null = null
 
-  // Available LLM providers
   public static readonly PROVIDERS: Record<string, LLMProvider> = {
     ollama: {
       id: 'ollama',
@@ -48,7 +47,7 @@ export class LLMService {
       requiresApiKey: false,
       defaultBaseUrl: 'http://localhost:11434',
       defaultModel: 'llama2',
-      icon: '🦙'
+      icon: 'LL'
     },
     lmstudio: {
       id: 'lmstudio',
@@ -58,7 +57,7 @@ export class LLMService {
       requiresApiKey: false,
       defaultBaseUrl: 'http://localhost:1234',
       defaultModel: 'local-model',
-      icon: '🎯'
+      icon: 'LS'
     },
     openai: {
       id: 'openai',
@@ -68,7 +67,7 @@ export class LLMService {
       requiresApiKey: true,
       defaultBaseUrl: 'https://api.openai.com/v1',
       defaultModel: 'gpt-4',
-      icon: '🤖'
+      icon: 'AI'
     },
     anthropic: {
       id: 'anthropic',
@@ -78,7 +77,7 @@ export class LLMService {
       requiresApiKey: true,
       defaultBaseUrl: 'https://api.anthropic.com',
       defaultModel: 'claude-3-sonnet-20240229',
-      icon: '🧠'
+      icon: 'CL'
     },
     gemini: {
       id: 'gemini',
@@ -88,7 +87,7 @@ export class LLMService {
       requiresApiKey: true,
       defaultBaseUrl: 'https://generativelanguage.googleapis.com',
       defaultModel: 'gemini-pro',
-      icon: '🌟'
+      icon: 'GM'
     }
   }
 
@@ -101,23 +100,14 @@ export class LLMService {
     return LLMService.instance
   }
 
-  /**
-   * Configure the LLM service with provider settings
-   */
   public configure(config: LLMConfig): void {
     this.currentConfig = config
   }
 
-  /**
-   * Get current configuration
-   */
   public getConfig(): LLMConfig | null {
     return this.currentConfig
   }
 
-  /**
-   * Generate AI response using configured LLM
-   */
   public async generateResponse(
     prompt: string,
     systemPrompt?: string,
@@ -126,66 +116,171 @@ export class LLMService {
     if (!this.currentConfig) {
       throw new Error('LLM service not configured')
     }
-
     const config = this.currentConfig
+    const temp = temperature ?? config.temperature ?? 0.7
+    const maxTokens = config.maxTokens ?? 1000
 
-    try {
-      // For development/demo, use mock API
-      // In production, replace with actual API call to myai LLM integration service
-      const { mockApi } = await import('./mockApi')
-
-      const result = await mockApi.generate({
-        ...config,
-        prompt,
-        systemPrompt,
-        temperature: temperature || config.temperature || 0.7,
-        maxTokens: config.maxTokens || 1000
-      })
-
-      return result
-
-      // Production API call (commented out for now):
-      /*
-      const response = await fetch('/api/llm/generate', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          provider: config.provider,
-          model: config.model,
-          apiKey: config.apiKey,
-          baseUrl: config.baseUrl,
-          prompt,
-          systemPrompt,
-          temperature: temperature || config.temperature || 0.7,
-          maxTokens: config.maxTokens || 1000
-        })
-      })
-
-      if (!response.ok) {
-        throw new Error(`LLM API error: ${response.status}`)
-      }
-
-      const data = await response.json()
-
-      return {
-        content: data.content,
-        responseType: data.responseType,
-        tokensUsed: data.tokensUsed,
-        model: config.model,
-        provider: config.provider
-      }
-      */
-    } catch (error) {
-      console.error('LLM generation error:', error)
-      throw new Error(`Failed to generate AI response: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    switch (config.provider) {
+      case 'ollama':
+        return this.generateOllama(config, prompt, systemPrompt, temp, maxTokens)
+      case 'lmstudio':
+      case 'openai':
+        return this.generateOpenAICompatible(config, prompt, systemPrompt, temp, maxTokens)
+      case 'anthropic':
+        return this.generateAnthropic(config, prompt, systemPrompt, temp, maxTokens)
+      case 'gemini':
+        return this.generateGemini(config, prompt, systemPrompt, temp, maxTokens)
+      default:
+        throw new Error(`Unknown provider: ${config.provider}`)
     }
   }
 
-  /**
-   * Generate ikubaysan-style structured response for VR chatbot
-   */
+  private async generateOllama(
+    config: LLMConfig,
+    prompt: string,
+    systemPrompt: string | undefined,
+    temperature: number,
+    maxTokens: number
+  ): Promise<AIResponse> {
+    const baseUrl = config.baseUrl ?? 'http://localhost:11434'
+    const fullPrompt = systemPrompt ? `${systemPrompt}\n\nUser: ${prompt}\nAssistant:` : prompt
+
+    const res = await fetch(`${baseUrl}/api/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: config.model,
+        prompt: fullPrompt,
+        stream: false,
+        options: { temperature, num_predict: maxTokens }
+      })
+    })
+    if (!res.ok) {
+      const err = await res.text()
+      throw new Error(`Ollama error: ${res.status} - ${err}`)
+    }
+    const data = (await res.json()) as { response: string; eval_count?: number }
+    return {
+      content: data.response.trim(),
+      tokensUsed: data.eval_count,
+      model: config.model,
+      provider: 'ollama'
+    }
+  }
+
+  private async generateOpenAICompatible(
+    config: LLMConfig,
+    prompt: string,
+    systemPrompt: string | undefined,
+    temperature: number,
+    maxTokens: number
+  ): Promise<AIResponse> {
+    let base = config.baseUrl ?? (config.provider === 'openai' ? 'https://api.openai.com/v1' : 'http://localhost:1234')
+    if (config.provider === 'lmstudio' && !base.endsWith('/v1')) base = base.replace(/\/?$/, '') + '/v1'
+    if (config.provider === 'openai' && !base.endsWith('/v1')) base = base.replace(/\/?$/, '') + '/v1'
+    const url = `${base.replace(/\/$/, '')}/chat/completions`
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (config.apiKey) headers['Authorization'] = `Bearer ${config.apiKey}`
+
+    const messages: Array<{ role: string; content: string }> = []
+    if (systemPrompt) messages.push({ role: 'system', content: systemPrompt })
+    messages.push({ role: 'user', content: prompt })
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        model: config.model,
+        messages,
+        temperature,
+        max_tokens: maxTokens
+      })
+    })
+    if (!res.ok) {
+      const err = await res.text()
+      throw new Error(`OpenAI/LM Studio error: ${res.status} - ${err}`)
+    }
+    const data = (await res.json()) as {
+      choices?: Array<{ message?: { content?: string } }>
+      usage?: { total_tokens?: number }
+    }
+    const content = data.choices?.[0]?.message?.content ?? ''
+    return {
+      content,
+      tokensUsed: data.usage?.total_tokens,
+      model: config.model,
+      provider: config.provider
+    }
+  }
+
+  private async generateAnthropic(
+    config: LLMConfig,
+    prompt: string,
+    systemPrompt: string | undefined,
+    temperature: number,
+    maxTokens: number
+  ): Promise<AIResponse> {
+    const apiKey = config.apiKey
+    if (!apiKey) throw new Error('Anthropic API key required')
+
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: config.model,
+        max_tokens: maxTokens,
+        system: systemPrompt ?? '',
+        messages: [{ role: 'user', content: prompt }]
+      })
+    })
+    if (!res.ok) {
+      const err = await res.text()
+      throw new Error(`Anthropic error: ${res.status} - ${err}`)
+    }
+    const data = (await res.json()) as {
+      content?: Array<{ type: string; text?: string }>
+      usage?: { output_tokens?: number; input_tokens?: number }
+    }
+    const text = data.content?.find((c) => c.type === 'text')?.text ?? ''
+    const tokensUsed = (data.usage?.output_tokens ?? 0) + (data.usage?.input_tokens ?? 0)
+    return { content: text, tokensUsed, model: config.model, provider: 'anthropic' }
+  }
+
+  private async generateGemini(
+    config: LLMConfig,
+    prompt: string,
+    systemPrompt: string | undefined,
+    temperature: number,
+    maxTokens: number
+  ): Promise<AIResponse> {
+    const apiKey = config.apiKey
+    if (!apiKey) throw new Error('Gemini API key required')
+
+    const { GoogleGenerativeAI } = await import('@google/generative-ai')
+    const genAI = new GoogleGenerativeAI(apiKey)
+    const model = genAI.getGenerativeModel({ model: config.model })
+
+    const fullPrompt = systemPrompt ? `${systemPrompt}\n\nUser: ${prompt}` : prompt
+    const result = await model.generateContent({
+      contents: [{ role: 'user', parts: [{ text: fullPrompt }] }],
+      generationConfig: {
+        temperature,
+        maxOutputTokens: maxTokens
+      }
+    })
+    const response = result.response
+    const text = response.text() ?? ''
+    return {
+      content: text,
+      model: config.model,
+      provider: 'gemini'
+    }
+  }
+
   public async generateStructuredResponse(
     userMessage: string,
     characterName: string = 'ringo',
@@ -205,91 +300,91 @@ ${conversationContext ? `Conversation history:\n${conversationContext.join('\n')
     return this.generateResponse(userMessage, systemPrompt, 0.5)
   }
 
-  /**
-   * Test connection to configured LLM provider
-   */
   public async testConnection(): Promise<{ success: boolean; message: string; models?: string[] }> {
     if (!this.currentConfig) {
       return { success: false, message: 'LLM service not configured' }
     }
+    const config = this.currentConfig
 
     try {
-      // For development/demo, use mock API
-      // In production, replace with actual API call
-      const { mockApi } = await import('./mockApi')
-      return await mockApi.testConnection(this.currentConfig)
-
-      // Production API call (commented out for now):
-      /*
-      const response = await fetch('/api/llm/test', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(this.currentConfig)
-      })
-
-      if (!response.ok) {
-        return {
-          success: false,
-          message: `Connection failed: ${response.status} ${response.statusText}`
+      if (config.provider === 'ollama') {
+        const baseUrl = config.baseUrl ?? 'http://localhost:11434'
+        const res = await fetch(`${baseUrl}/api/tags`)
+        if (!res.ok) {
+          return { success: false, message: `Ollama not reachable: ${res.status}` }
         }
+        const data = (await res.json()) as { models?: Array<{ name: string }> }
+        const models = data.models?.map((m) => m.name.split(':')[0]) ?? [config.model]
+        return { success: true, message: 'Connected to Ollama', models }
       }
 
-      const data = await response.json()
-      return {
-        success: true,
-        message: data.message || 'Connection successful',
-        models: data.models
+      if (config.provider === 'lmstudio') {
+        const baseUrl = config.baseUrl ?? 'http://localhost:1234'
+        const res = await fetch(`${baseUrl}/v1/models`)
+        if (!res.ok) {
+          return { success: false, message: `LM Studio not reachable: ${res.status}` }
+        }
+        const data = (await res.json()) as { data?: Array<{ id: string }> }
+        const models = data.data?.map((m) => m.id) ?? [config.model]
+        return { success: true, message: 'Connected to LM Studio', models }
       }
-      */
-    } catch (error) {
-      return {
-        success: false,
-        message: `Connection error: ${error instanceof Error ? error.message : 'Unknown error'}`
+
+      if (config.provider === 'openai') {
+        if (!config.apiKey) return { success: false, message: 'OpenAI API key required' }
+        const res = await fetch('https://api.openai.com/v1/models', {
+          headers: { Authorization: `Bearer ${config.apiKey}` }
+        })
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({})) as { error?: { message?: string } }
+          return { success: false, message: err?.error?.message ?? `OpenAI error: ${res.status}` }
+        }
+        const data = (await res.json()) as { data?: Array<{ id: string }> }
+        const models = data.data?.slice(0, 20).map((m) => m.id) ?? []
+        return { success: true, message: 'Connected to OpenAI', models }
       }
+
+      if (config.provider === 'anthropic') {
+        if (!config.apiKey) return { success: false, message: 'Anthropic API key required' }
+        const res = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': config.apiKey,
+            'anthropic-version': '2023-06-01'
+          },
+          body: JSON.stringify({
+            model: config.model,
+            max_tokens: 1,
+            messages: [{ role: 'user', content: 'Hi' }]
+          })
+        })
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({})) as { error?: { message?: string } }
+          return { success: false, message: err?.error?.message ?? `Anthropic error: ${res.status}` }
+        }
+        return { success: true, message: 'Connected to Anthropic' }
+      }
+
+      if (config.provider === 'gemini') {
+        if (!config.apiKey) return { success: false, message: 'Gemini API key required' }
+        const { GoogleGenerativeAI } = await import('@google/generative-ai')
+        const genAI = new GoogleGenerativeAI(config.apiKey)
+        const model = genAI.getGenerativeModel({ model: config.model })
+        await model.generateContent('Hi')
+        return { success: true, message: 'Connected to Gemini' }
+      }
+
+      return { success: false, message: `Unknown provider: ${config.provider}` }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unknown error'
+      return { success: false, message: msg }
     }
   }
 
-  /**
-   * Get available models for current provider
-   */
   public async getAvailableModels(): Promise<string[]> {
-    if (!this.currentConfig) {
-      return []
-    }
-
-    try {
-      // For development/demo, use mock API
-      // In production, replace with actual API call
-      const { mockApi } = await import('./mockApi')
-      return await mockApi.getModels(this.currentConfig)
-
-      // Production API call (commented out for now):
-      /*
-      const response = await fetch('/api/llm/models', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          provider: this.currentConfig.provider,
-          apiKey: this.currentConfig.apiKey,
-          baseUrl: this.currentConfig.baseUrl
-        })
-      })
-
-      if (!response.ok) {
-        return []
-      }
-
-      const data = await response.json()
-      return data.models || []
-      */
-    } catch (error) {
-      console.error('Error fetching models:', error)
-      return []
-    }
+    if (!this.currentConfig) return []
+    const result = await this.testConnection()
+    return result.models ?? [this.currentConfig.model]
   }
 }
 

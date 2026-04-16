@@ -1,140 +1,165 @@
-import React, { useState, useRef } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
-import {
-  Mic,
-  MicOff,
-  Volume2,
-  Zap,
-  Brain,
-  Activity,
-  Settings,
-  Play,
-  Square,
-  RotateCcw
-} from 'lucide-react'
+import { Mic, Brain, Activity, Play, Square } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
+import { llmService } from '@/services/llmService'
 
 interface VoiceSession {
   id: string
   startTime: Date
-  wakeWords: string[]
   transcriptions: string[]
   responses: string[]
   duration: number
 }
 
+const SpeechRecognitionAPI =
+  typeof window !== 'undefined' && (window.SpeechRecognition || (window as unknown as { webkitSpeechRecognition?: typeof SpeechRecognition }).webkitSpeechRecognition)
+    ? (window.SpeechRecognition || (window as unknown as { webkitSpeechRecognition: typeof SpeechRecognition }).webkitSpeechRecognition)
+    : null
+
 const VoiceControl: React.FC = () => {
   const [isRecording, setIsRecording] = useState(false)
-  const [sphinxActive, setSphinxActive] = useState(false)
-  const [googleCloudActive, setGoogleCloudActive] = useState(false)
-  const [currentWakeWord, setCurrentWakeWord] = useState<string | null>(null)
+  const [isListening, setIsListening] = useState(false)
+  const [isProcessing, setIsProcessing] = useState(false)
   const [audioLevel, setAudioLevel] = useState(0)
+  const [transcript, setTranscript] = useState('')
   const [sessions, setSessions] = useState<VoiceSession[]>([])
+  const recognitionRef = useRef<InstanceType<NonNullable<typeof SpeechRecognitionAPI>> | null>(null)
+  const startTimeRef = useRef<number>(0)
   const { toast } = useToast()
 
+  const isSupported = !!SpeechRecognitionAPI
+
   const startVoiceSession = () => {
+    if (!isSupported) {
+      toast({ title: 'Not Supported', description: 'Web Speech API is not available in this browser. Use Chrome or Edge.', variant: 'destructive' })
+      return
+    }
+    if (!llmService.getConfig()) {
+      toast({ title: 'LLM Not Configured', description: 'Configure an LLM in Settings before using voice control.', variant: 'destructive' })
+      return
+    }
+
     setIsRecording(true)
-    setSphinxActive(true)
-    setCurrentWakeWord(null)
+    setIsListening(true)
+    setIsProcessing(false)
+    setTranscript('')
     setAudioLevel(0)
+    startTimeRef.current = Date.now()
 
-    toast({
-      title: "Voice Session Started",
-      description: "Sphinx wake-word detection is now active",
-    })
+    const Recognition = SpeechRecognitionAPI!
+    const recognition = new Recognition()
+    recognition.continuous = true
+    recognition.interimResults = true
+    recognition.lang = 'en-US'
 
-    // Simulate audio level monitoring
-    const interval = setInterval(() => {
-      setAudioLevel(Math.random() * 100)
-    }, 100)
+    recognition.onresult = (event: SpeechRecognitionEvent) => {
+      let final = ''
+      let interim = ''
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const res = event.results[i]
+        const text = res[0].transcript
+        if (res.isFinal) final += text
+        else interim += text
+      }
+      if (final) setTranscript((prev) => (prev + ' ' + final).trim())
+      if (interim) setTranscript((prev) => (prev + ' ' + interim).trim())
+    }
 
-    // Simulate wake word detection after 2-5 seconds
-    const wakeWordDelay = Math.random() * 3000 + 2000
-    setTimeout(() => {
-      const wakeWords = ['ringo', 'hey ringo', 'listen ringo']
-      const detectedWord = wakeWords[Math.floor(Math.random() * wakeWords.length)]
-      setCurrentWakeWord(detectedWord)
-      setSphinxActive(false)
-      setGoogleCloudActive(true)
+    recognition.onerror = (event: Event & { error?: string }) => {
+      const err = (event as { error?: string }).error
+      if (err === 'no-speech') return
+      toast({ title: 'Recognition Error', description: err ?? 'Unknown error', variant: 'destructive' })
+    }
 
-      toast({
-        title: "Wake Word Detected!",
-        description: `Sphinx detected: "${detectedWord}" - Switching to Google Cloud STT`,
-      })
+    recognition.start()
+    recognitionRef.current = recognition
 
-      // Simulate Google Cloud processing
-      setTimeout(() => {
-        setGoogleCloudActive(false)
-        setIsRecording(false)
-        clearInterval(interval)
-        setAudioLevel(0)
-
-        // Add session to history
-        const newSession: VoiceSession = {
-          id: Date.now().toString(),
-          startTime: new Date(Date.now() - 8000),
-          wakeWords: [detectedWord],
-          transcriptions: ['Hello ringo, how are you doing today?'],
-          responses: ['TYPE_NORMAL I\'m doing well, thank you for asking! How can I help you today?'],
-          duration: 8000
-        }
-        setSessions(prev => [newSession, ...prev.slice(0, 9)]) // Keep last 10 sessions
-
-        toast({
-          title: "Voice Session Complete",
-          description: "Transcription processed and AI response generated",
-        })
-      }, 3000)
-    }, wakeWordDelay)
-
-    // Cleanup interval after session
-    setTimeout(() => clearInterval(interval), 8000)
+    toast({ title: 'Voice Session Started', description: 'Listening for speech. Speak and click Stop when done.' })
   }
 
-  const stopVoiceSession = () => {
-    setIsRecording(false)
-    setSphinxActive(false)
-    setGoogleCloudActive(false)
-    setCurrentWakeWord(null)
-    setAudioLevel(0)
+  const stopVoiceSession = async () => {
+    if (recognitionRef.current) {
+      recognitionRef.current.stop()
+      recognitionRef.current = null
+    }
+    setIsListening(false)
 
-    toast({
-      title: "Voice Session Stopped",
-      description: "Voice processing deactivated",
-    })
+    if (!transcript.trim()) {
+      setIsRecording(false)
+      toast({ title: 'Voice Session Stopped', description: 'No speech detected.' })
+      return
+    }
+
+    setIsProcessing(true)
+    const sessionStart = startTimeRef.current
+    const duration = Date.now() - sessionStart
+
+    try {
+      const llmResponse = await llmService.generateStructuredResponse(transcript.trim(), 'ringo')
+      const newSession: VoiceSession = {
+        id: Date.now().toString(),
+        startTime: new Date(sessionStart),
+        transcriptions: [transcript.trim()],
+        responses: [llmResponse.content],
+        duration
+      }
+      setSessions((prev) => [newSession, ...prev.slice(0, 9)])
+      toast({ title: 'Voice Session Complete', description: 'Transcription processed and AI response generated.' })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'LLM error'
+      toast({ title: 'AI Response Error', description: msg, variant: 'destructive' })
+      const newSession: VoiceSession = {
+        id: Date.now().toString(),
+        startTime: new Date(sessionStart),
+        transcriptions: [transcript.trim()],
+        responses: [`[Error: ${msg}]`],
+        duration
+      }
+      setSessions((prev) => [newSession, ...prev.slice(0, 9)])
+    } finally {
+      setIsProcessing(false)
+      setIsRecording(false)
+      setTranscript('')
+      setAudioLevel(0)
+    }
   }
 
-  const getSphinxStatus = () => {
-    if (!isRecording) return { status: 'inactive', color: 'bg-gray-500' }
-    if (sphinxActive) return { status: 'listening', color: 'bg-blue-500 animate-pulse' }
-    return { status: 'wake detected', color: 'bg-green-500' }
-  }
-
-  const getGoogleCloudStatus = () => {
-    if (!googleCloudActive) return { status: 'standby', color: 'bg-gray-500' }
-    return { status: 'processing', color: 'bg-purple-500 animate-pulse' }
-  }
-
-  const sphinxStatus = getSphinxStatus()
-  const googleStatus = getGoogleCloudStatus()
+  useEffect(() => {
+    if (!isListening) return
+    let rafId: number
+    const tick = () => {
+      setAudioLevel((prev) => Math.min(100, prev + (Math.random() * 20 - 8)))
+      rafId = requestAnimationFrame(tick)
+    }
+    rafId = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(rafId)
+  }, [isListening])
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="text-center space-y-4">
         <h1 className="text-3xl font-bold bg-gradient-to-r from-green-400 to-blue-400 bg-clip-text text-transparent">
           Voice Control System
         </h1>
         <p className="text-gray-300 max-w-2xl mx-auto">
-          Dual STT Architecture: Sphinx wake-word detection + Google Cloud accurate transcription.
-          Real-time voice processing for VR AI characters.
+          Web Speech API for real-time speech-to-text. Configure an LLM in Settings for AI responses.
         </p>
       </div>
 
-      {/* Control Panel */}
+      {!isSupported && (
+        <Card className="bg-black/20 backdrop-blur-md border-white/10 border-amber-500/50">
+          <CardContent className="pt-6">
+            <p className="text-amber-400">
+              Web Speech API is not supported. Use Chrome, Edge, or Safari for speech recognition.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
       <Card className="bg-black/20 backdrop-blur-md border-white/10">
         <CardHeader>
           <CardTitle className="flex items-center space-x-2">
@@ -142,78 +167,55 @@ const VoiceControl: React.FC = () => {
             <span>Voice Processing Control</span>
           </CardTitle>
           <CardDescription>
-            Start a voice session to experience the dual STT pipeline in action
+            Start a voice session to record speech and get AI responses
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex items-center space-x-4 mb-6">
             <Button
-              variant={isRecording ? "destructive" : "vr"}
+              variant={isRecording ? 'destructive' : 'vr'}
               onClick={isRecording ? stopVoiceSession : startVoiceSession}
+              disabled={!isSupported || isProcessing}
               className="flex items-center space-x-2"
             >
               {isRecording ? <Square className="h-5 w-5" /> : <Play className="h-5 w-5" />}
-              <span>{isRecording ? 'Stop Session' : 'Start Voice Session'}</span>
-            </Button>
-
-            <Button variant="outline" disabled={isRecording}>
-              <RotateCcw className="h-4 w-4 mr-2" />
-              Reset
+              <span>{isProcessing ? 'Processing...' : isRecording ? 'Stop & Process' : 'Start Voice Session'}</span>
             </Button>
           </div>
 
-          {/* Audio Level Indicator */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <span className="text-sm font-medium">Audio Input Level</span>
-              <span className="text-sm text-gray-400">{Math.round(audioLevel)}%</span>
+              <span className="text-sm font-medium">Status</span>
+              <Badge variant="outline" className={isListening ? 'bg-green-600/20 text-green-400' : 'bg-gray-600/20'}>
+                {isListening ? 'Listening' : isProcessing ? 'Processing' : 'Idle'}
+              </Badge>
             </div>
-            <Progress value={audioLevel} className="h-2" />
+            <Progress value={isListening ? Math.min(100, audioLevel + 30) : 0} className="h-2" />
           </div>
+
+          {transcript && (
+            <div className="mt-4 p-3 bg-black/20 rounded-lg">
+              <span className="text-sm text-gray-400">Live transcript:</span>
+              <p className="text-sm mt-1">{transcript}</p>
+            </div>
+          )}
         </CardContent>
       </Card>
 
-      {/* STT Pipeline Status */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <Card className="bg-black/20 backdrop-blur-md border-white/10">
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
               <Brain className="h-5 w-5 text-blue-400" />
-              <span>Sphinx Wake-Word Detection</span>
+              <span>Web Speech API</span>
             </CardTitle>
-            <CardDescription>
-              Fast, offline keyword spotting for character activation
-            </CardDescription>
+            <CardDescription>Browser-native speech recognition</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-sm">Status</span>
-                <Badge variant="outline" className={`${sphinxStatus.color} text-white border-0`}>
-                  {sphinxStatus.status}
-                </Badge>
-              </div>
-
-              <div className="space-y-2">
-                <span className="text-sm font-medium">Wake Words</span>
-                <div className="flex flex-wrap gap-2">
-                  {['ringo', 'hey ringo', 'listen ringo'].map(word => (
-                    <Badge
-                      key={word}
-                      variant={currentWakeWord === word ? "default" : "secondary"}
-                      className={currentWakeWord === word ? "bg-green-600" : ""}
-                    >
-                      {word}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
-
-              <div className="text-xs text-gray-400">
-                <p>• Always listening (low CPU)</p>
-                <p>• Triggers conversation state</p>
-                <p>• PocketSphinx engine</p>
-              </div>
+            <div className="text-xs text-gray-400 space-y-1">
+              <p>Supported in Chrome, Edge, Safari</p>
+              <p>No cloud API key required</p>
+              <p>Continuous recognition mode</p>
             </div>
           </CardContent>
         </Card>
@@ -221,78 +223,42 @@ const VoiceControl: React.FC = () => {
         <Card className="bg-black/20 backdrop-blur-md border-white/10">
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
-              <Zap className="h-5 w-5 text-purple-400" />
-              <span>Google Cloud STT</span>
+              <Activity className="h-5 w-5 text-purple-400" />
+              <span>LLM Integration</span>
             </CardTitle>
-            <CardDescription>
-              High-accuracy speech-to-text for full conversation processing
-            </CardDescription>
-          </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-sm">Status</span>
-                <Badge variant="outline" className={`${googleStatus.color} text-white border-0`}>
-                  {googleStatus.status}
-                </Badge>
-              </div>
-
-              <div className="space-y-2">
-                <span className="text-sm font-medium">Capabilities</span>
-                <div className="text-xs text-gray-400 space-y-1">
-                  <p>• Full sentence transcription</p>
-                  <p>• Multiple language support</p>
-                  <p>• Context-aware processing</p>
-                  <p>• Noise cancellation</p>
-                </div>
-              </div>
-
-              <div className="text-xs text-gray-400">
-                <p>• Activated after wake word</p>
-                <p>• Higher accuracy than Sphinx</p>
-                <p>• Cloud-based processing</p>
-              </div>
+            <div className="text-xs text-gray-400 space-y-1">
+              <p>Configure Ollama, OpenAI, or other LLM in Settings</p>
+              <p>AI responses use ikubaysan format</p>
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Session History */}
       <Card className="bg-black/20 backdrop-blur-md border-white/10">
         <CardHeader>
           <CardTitle className="flex items-center space-x-2">
             <Activity className="h-5 w-5" />
             <span>Voice Session History</span>
           </CardTitle>
-          <CardDescription>
-            Recent voice processing sessions and their results
-          </CardDescription>
+          <CardDescription>Recent voice sessions and AI responses</CardDescription>
         </CardHeader>
         <CardContent>
           {sessions.length === 0 ? (
             <div className="text-center py-8 text-gray-500">
               <Activity className="h-12 w-12 mx-auto mb-4 opacity-50" />
               <p>No voice sessions recorded yet</p>
-              <p className="text-sm mt-2">Start a voice session to see processing results</p>
+              <p className="text-sm mt-2">Start a voice session to see results</p>
             </div>
           ) : (
             <div className="space-y-4">
               {sessions.map((session) => (
                 <div key={session.id} className="border border-white/10 rounded-lg p-4">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="font-medium">
-                      Session {session.id.slice(-4)}
-                    </span>
-                    <Badge variant="outline">
-                      {Math.round(session.duration / 1000)}s
-                    </Badge>
+                    <span className="font-medium">Session {session.id.slice(-4)}</span>
+                    <Badge variant="outline">{Math.round(session.duration / 1000)}s</Badge>
                   </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                    <div>
-                      <span className="text-gray-400">Wake Word:</span>
-                      <p className="font-mono">{session.wakeWords[0]}</p>
-                    </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                     <div>
                       <span className="text-gray-400">Transcription:</span>
                       <p className="font-mono text-xs">{session.transcriptions[0]}</p>
@@ -306,75 +272,6 @@ const VoiceControl: React.FC = () => {
               ))}
             </div>
           )}
-        </CardContent>
-      </Card>
-
-      {/* Architecture Details */}
-      <Card className="bg-black/20 backdrop-blur-md border-white/10">
-        <CardHeader>
-          <CardTitle>Dual STT Pipeline Architecture</CardTitle>
-          <CardDescription>
-            How the two-stage voice processing system works
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-3">
-                <h4 className="font-semibold text-green-400">Stage 1: Wake Word Detection</h4>
-                <div className="space-y-2 text-sm text-gray-300">
-                  <div className="flex items-center space-x-2">
-                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                    <span>PocketSphinx running continuously</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                    <span>Low CPU usage (~1-2%)</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                    <span>Keyword spotting for character names</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                    <span>Triggers state transition to 'conversing'</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                <h4 className="font-semibold text-blue-400">Stage 2: Accurate Transcription</h4>
-                <div className="space-y-2 text-sm text-gray-300">
-                  <div className="flex items-center space-x-2">
-                    <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                    <span>Google Cloud Speech API activation</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                    <span>High accuracy transcription</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                    <span>Full sentence processing</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                    <span>Context-aware language understanding</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-black/20 rounded-lg p-4">
-              <h4 className="font-semibold mb-2">Why Dual STT?</h4>
-              <p className="text-sm text-gray-400">
-                The dual architecture solves the fundamental trade-off between speed and accuracy.
-                Sphinx provides instant wake-word detection with minimal resources, while Google Cloud
-                delivers professional-grade transcription when full context is needed. This enables
-                natural, responsive voice interactions in VR environments where both speed and accuracy matter.
-              </p>
-            </div>
-          </div>
         </CardContent>
       </Card>
     </div>

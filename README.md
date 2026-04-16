@@ -26,6 +26,54 @@ Beautiful React Tailwind VR Worlds Control Center integrating Avatar MCP, Blende
 - **React Query** for efficient data fetching
 - **Dark theme** optimized for VR control interfaces
 
+## 🔌 Port Management System
+
+MyVRWorlds is part of the Sandraschi port management system. All web applications run on ports above 11000 to avoid system conflicts.
+
+### Current Port Assignments
+- **MyVRWorlds**: 11101 (VR MCP Control Center)
+- **Advanced Memory MCP Frontend**: 11102 (planned)
+- **OCR Webapp**: 11103
+- **Robotics Webapp**: 11104
+- **Home Automation**: 11105
+- **Calibre Plus**: 11106
+- **Plex Plus**: 11107
+- **Immich Plus**: 11108
+- **Document Viewer**: 11109
+- **Video Generator**: 11110
+- **Voice AI Suite**: 11111
+- **Research Assistant**: 11112
+- **Code Assistant**: 11113
+- **Character Conversation**: 11114
+- **Gemini Tools**: 11115
+- **Bob & Alice**: 11116
+- **Teams Debate**: 11117
+
+### Port Management Tools
+```bash
+# Check if a port is available
+node scripts/port-manager.js check 11101
+
+# List all assigned ports
+node scripts/port-manager.js list
+
+# Assign next available port to new app
+node scripts/port-manager.js assign my-new-app
+
+# Validate all port assignments
+node scripts/port-manager.js validate
+
+# Update app configuration
+node scripts/port-manager.js update myvrworlds status active
+```
+
+### Port Assignment Rules
+1. All ports must be above 11000
+2. Ports 11000-11004 are reserved for system services
+3. Port format: 11XXX (where XXX is sequential)
+4. Document all changes in `config/ports.json`
+5. Use the port manager script for all assignments
+
 ## 🏗️ Architecture
 
 ### Dual STT Voice Pipeline
@@ -74,18 +122,20 @@ ollama serve
 ### Installation
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/myvrworlds.git
+git clone https://github.com/sandraschi/myvrworlds.git
 cd myvrworlds
 
 # Install dependencies
 npm install
 
-# Start development server
+# Start development server (port 11101)
 npm run dev
 ```
 
 ### Access the Interface
-Open http://localhost:3001 in your browser
+Open http://localhost:11101 in your browser
+
+**Note**: MyVRWorlds uses port 11101 as part of the Sandraschi port management system. All web applications run on ports 11000+ to avoid conflicts.
 
 ### First-Time Setup
 1. Go to **Settings** → **LLM Configuration**

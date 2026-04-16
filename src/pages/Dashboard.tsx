@@ -1,5 +1,8 @@
-import React from 'react'
+import React, { useState, useEffect } from 'react'
+import { Link } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { fetchMCPStatus, type MCPStatusResponse } from '@/services/api'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -18,49 +21,23 @@ import {
 } from 'lucide-react'
 
 const Dashboard: React.FC = () => {
+  const { data: mcpStatus } = useQuery<MCPStatusResponse>({
+    queryKey: ['mcp-status'],
+    queryFn: fetchMCPStatus,
+    refetchInterval: 15000,
+    retry: false
+  })
+
+  const activeCount = mcpStatus ? Object.values(mcpStatus.servers).filter((s) => s.online).length : 6
+  const totalCount = mcpStatus ? Object.keys(mcpStatus.servers).length : 6
+
   const integrations = [
-    {
-      name: 'VRChat MCP',
-      description: 'Control VRChat avatars and worlds with OSC integration',
-      status: 'online',
-      icon: Gamepad2,
-      features: ['Avatar Control', 'World Interaction', 'OSC Bridge']
-    },
-    {
-      name: 'Resonite MCP',
-      description: 'Manage Resonite sessions and Logix scripting',
-      status: 'online',
-      icon: Monitor,
-      features: ['Session Management', 'Logix Control', 'Asset Sync']
-    },
-    {
-      name: 'Avatar MCP',
-      description: 'Create and modify VR avatars with AI assistance',
-      status: 'online',
-      icon: User,
-      features: ['Avatar Generation', 'Blendshape Control', 'Animation']
-    },
-    {
-      name: 'Blender MCP',
-      description: '3D modeling and rendering for VR content creation',
-      status: 'online',
-      icon: Palette,
-      features: ['Model Creation', 'Texture Mapping', 'VR Export']
-    },
-    {
-      name: 'OSC MCP',
-      description: 'Open Sound Control protocol for VR applications',
-      status: 'online',
-      icon: Zap,
-      features: ['Parameter Control', 'Device Sync', 'Real-time Data']
-    },
-    {
-      name: 'Unity MCP',
-      description: 'Unity game engine integration for VR development',
-      status: 'online',
-      icon: Gamepad2,
-      features: ['Scene Management', 'Build Automation', 'VR Testing']
-    }
+    { name: 'VRChat MCP', description: 'Control VRChat avatars and worlds with OSC integration', status: 'online', icon: Gamepad2, features: ['Avatar Control', 'World Interaction', 'OSC Bridge'], href: '/vrchat' },
+    { name: 'Resonite MCP', description: 'Manage Resonite sessions and Logix scripting', status: 'online', icon: Monitor, features: ['Session Management', 'Logix Control', 'Asset Sync'], href: '/resonite' },
+    { name: 'Avatar MCP', description: 'Create and modify VR avatars with AI assistance', status: 'online', icon: User, features: ['Avatar Generation', 'Blendshape Control', 'Animation'], href: '/avatar-studio' },
+    { name: 'Blender MCP', description: '3D modeling and rendering for VR content creation', status: 'online', icon: Palette, features: ['Model Creation', 'Texture Mapping', 'VR Export'], href: '/blender' },
+    { name: 'OSC MCP', description: 'Open Sound Control protocol for VR applications', status: 'online', icon: Zap, features: ['Parameter Control', 'Device Sync', 'Real-time Data'], href: '/osc' },
+    { name: 'Unity MCP', description: 'Unity game engine integration for VR development', status: 'online', icon: Gamepad2, features: ['Scene Management', 'Build Automation', 'VR Testing'], href: '/unity' }
   ]
 
   const aiFeatures = [
@@ -105,8 +82,8 @@ const Dashboard: React.FC = () => {
             <Activity className="h-4 w-4 text-green-400" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-400">6/6</div>
-            <p className="text-xs text-gray-400">All VR MCP servers online</p>
+            <div className="text-2xl font-bold text-green-400">{activeCount}/{totalCount}</div>
+            <p className="text-xs text-gray-400">{mcpStatus ? 'MCP servers (API bridge)' : 'VR MCP integrations'}</p>
           </CardContent>
         </Card>
 
@@ -161,8 +138,8 @@ const Dashboard: React.FC = () => {
                       </Badge>
                     ))}
                   </div>
-                  <Button className="w-full variant-vr">
-                    Access {integration.name}
+                  <Button variant="vr" asChild className="w-full">
+                    <Link to={integration.href}>Access {integration.name}</Link>
                   </Button>
                 </CardContent>
               </Card>
@@ -205,21 +182,17 @@ const Dashboard: React.FC = () => {
       <div>
         <h2 className="text-2xl font-bold mb-4 text-white">Quick Actions</h2>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <Button variant="vr" className="h-20 flex flex-col items-center justify-center space-y-2">
-            <MessageSquare className="h-6 w-6" />
-            <span>Start AI Chat</span>
+          <Button variant="vr" asChild className="h-20 flex flex-col items-center justify-center space-y-2">
+            <Link to="/ai-chatbot" className="flex flex-col items-center justify-center space-y-2"><MessageSquare className="h-6 w-6" /><span>Start AI Chat</span></Link>
           </Button>
-          <Button variant="vr" className="h-20 flex flex-col items-center justify-center space-y-2">
-            <Mic className="h-6 w-6" />
-            <span>Voice Control</span>
+          <Button variant="vr" asChild className="h-20 flex flex-col items-center justify-center space-y-2">
+            <Link to="/voice-control" className="flex flex-col items-center justify-center space-y-2"><Mic className="h-6 w-6" /><span>Voice Control</span></Link>
           </Button>
-          <Button variant="vr" className="h-20 flex flex-col items-center justify-center space-y-2">
-            <User className="h-6 w-6" />
-            <span>Avatar Studio</span>
+          <Button variant="vr" asChild className="h-20 flex flex-col items-center justify-center space-y-2">
+            <Link to="/avatar-studio" className="flex flex-col items-center justify-center space-y-2"><User className="h-6 w-6" /><span>Avatar Studio</span></Link>
           </Button>
-          <Button variant="vr" className="h-20 flex flex-col items-center justify-center space-y-2">
-            <Settings className="h-6 w-6" />
-            <span>System Settings</span>
+          <Button variant="vr" asChild className="h-20 flex flex-col items-center justify-center space-y-2">
+            <Link to="/settings" className="flex flex-col items-center justify-center space-y-2"><Settings className="h-6 w-6" /><span>System Settings</span></Link>
           </Button>
         </div>
       </div>

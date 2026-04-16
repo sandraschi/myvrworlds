@@ -1,0 +1,190 @@
+{
+  "description": "Port Management System for Sandraschi Web Applications",
+  "version": "1.0.0",
+  "last_updated": "2025-12-20",
+  "port_range": {
+    "min": 11000,
+    "max": 19999,
+    "reserved": [11000, 11001, 11002, 11003, 11004]
+  },
+  "applications": {
+    "myvrworlds": {
+      "name": "MyVRWorlds",
+      "description": "VR MCP Control Center with dual STT AI chatbot",
+      "port": 11101,
+      "category": "vr",
+      "status": "active",
+      "technologies": ["React", "TypeScript", "Tailwind", "Dual STT", "MCP"],
+      "dependencies": ["VR MCP servers", "LLM providers"]
+    },
+    "advanced-memory-mcp-frontend": {
+      "name": "Advanced Memory MCP Frontend",
+      "description": "Knowledge management system web interface",
+      "port": 11102,
+      "category": "productivity",
+      "status": "planned",
+      "technologies": ["React", "Dual STT", "Knowledge Graph"],
+      "dependencies": ["Advanced Memory MCP", "LLM providers"]
+    },
+    "ocr-webapp": {
+      "name": "OCR Web Application",
+      "description": "Optical Character Recognition processing interface",
+      "port": 11103,
+      "category": "productivity",
+      "status": "active",
+      "technologies": ["OCR", "Document Processing"],
+      "dependencies": ["OCR MCP", "Document storage"]
+    },
+    "robotics-webapp": {
+      "name": "Robotics Control Center",
+      "description": "Robotic systems control and monitoring interface",
+      "port": 11104,
+      "category": "robotics",
+      "status": "active",
+      "technologies": ["ROS", "Robot Control", "Real-time"],
+      "dependencies": ["Unitree Robotics MCP", "ROS Bridge"]
+    },
+    "home-automation-webapp": {
+      "name": "Home Automation Dashboard",
+      "description": "Smart home control and monitoring system",
+      "port": 11105,
+      "category": "iot",
+      "status": "active",
+      "technologies": ["IoT", "MQTT", "Smart Home"],
+      "dependencies": ["Home Assistant MCP", "IoT devices"]
+    },
+    "calibre-plus-webapp": {
+      "name": "Calibre Plus",
+      "description": "Enhanced e-book library management with AI",
+      "port": 11106,
+      "category": "productivity",
+      "status": "active",
+      "technologies": ["React", "FastAPI", "AI", "RAG"],
+      "dependencies": ["Calibre", "LLM providers", "Vector DB"]
+    },
+    "plex-plus-webapp": {
+      "name": "Plex Plus",
+      "description": "Enhanced media server with AI recommendations",
+      "port": 11107,
+      "category": "entertainment",
+      "status": "active",
+      "technologies": ["React", "Plex API", "AI", "Media"],
+      "dependencies": ["Plex Media Server", "LLM providers"]
+    },
+    "immich-plus-webapp": {
+      "name": "Immich Plus",
+      "description": "AI-powered photo management and organization",
+      "port": 11108,
+      "category": "productivity",
+      "status": "active",
+      "technologies": ["React", "Immich API", "AI", "Computer Vision"],
+      "dependencies": ["Immich", "AI vision models"]
+    },
+    "document-viewer-webapp": {
+      "name": "Document Viewer",
+      "description": "Universal document viewing and processing interface",
+      "port": 11109,
+      "category": "productivity",
+      "status": "active",
+      "technologies": ["React", "PDF.js", "Document Processing"],
+      "dependencies": ["Document storage", "OCR services"]
+    },
+    "video-generator-webapp": {
+      "name": "Video Generator",
+      "description": "AI-powered video creation and editing interface",
+      "port": 11110,
+      "category": "creative",
+      "status": "active",
+      "technologies": ["React", "Video Processing", "AI"],
+      "dependencies": ["Video generation models", "FFmpeg"]
+    },
+    "voice-ai-suite-webapp": {
+      "name": "Voice AI Suite",
+      "description": "Comprehensive voice AI processing and synthesis platform",
+      "port": 11111,
+      "category": "ai",
+      "status": "active",
+      "technologies": ["React", "TTS", "STT", "Voice Cloning"],
+      "dependencies": ["Kokoro TTS", "Whisper STT", "Voice models"]
+    },
+    "research-assistant-webapp": {
+      "name": "Research Assistant",
+      "description": "AI-powered research and analysis interface",
+      "port": 11112,
+      "category": "productivity",
+      "status": "active",
+      "technologies": ["React", "Research AI", "Document Analysis"],
+      "dependencies": ["Research databases", "LLM providers"]
+    },
+    "code-assistant-webapp": {
+      "name": "Code Assistant",
+      "description": "AI-powered programming and development assistant",
+      "port": 11113,
+      "category": "development",
+      "status": "active",
+      "technologies": ["React", "Code Analysis", "AI"],
+      "dependencies": ["Code repositories", "LLM providers"]
+    },
+    "character-conversation-webapp": {
+      "name": "Character Conversation",
+      "description": "AI character interaction and conversation platform",
+      "port": 11114,
+      "category": "entertainment",
+      "status": "active",
+      "technologies": ["React", "Character AI", "Conversation"],
+      "dependencies": ["Character models", "LLM providers"]
+    },
+    "gemini-tools-webapp": {
+      "name": "Gemini Tools",
+      "description": "Google Gemini AI tool integration interface",
+      "port": 11115,
+      "category": "ai",
+      "status": "active",
+      "technologies": ["React", "Gemini API", "AI Tools"],
+      "dependencies": ["Google Gemini", "API keys"]
+    },
+    "bob-and-alice-webapp": {
+      "name": "Bob & Alice",
+      "description": "Interactive AI character conversation platform",
+      "port": 11116,
+      "category": "entertainment",
+      "status": "active",
+      "technologies": ["React", "Character AI", "Multi-agent"],
+      "dependencies": ["Ollama", "Character models"]
+    },
+    "teams-debate-webapp": {
+      "name": "Teams Debate",
+      "description": "Multi-agent AI debate and discussion platform",
+      "port": 11117,
+      "category": "ai",
+      "status": "active",
+      "technologies": ["React", "Multi-agent", "Debate AI"],
+      "dependencies": ["LLM providers", "Debate frameworks"]
+    }
+  },
+  "categories": {
+    "vr": "Virtual Reality applications and VR MCP integrations",
+    "productivity": "Productivity and knowledge management tools",
+    "robotics": "Robotic systems and automation control",
+    "iot": "Internet of Things and smart home systems",
+    "entertainment": "Media, gaming, and entertainment applications",
+    "creative": "Creative tools and content generation",
+    "ai": "Artificial Intelligence and machine learning interfaces",
+    "development": "Development tools and programming assistants"
+  },
+  "management": {
+    "port_assignment_rules": [
+      "All ports must be above 11000",
+      "Port numbers should be 11XXX where XXX is sequential",
+      "Category-based grouping for logical organization",
+      "Reserve ports 11000-11004 for system services",
+      "Document all port assignments in this file"
+    ],
+    "conflict_resolution": [
+      "Check ports.json before assigning new ports",
+      "Use port-manager.js script to validate assignments",
+      "Test applications on assigned ports before deployment",
+      "Document port changes in CHANGELOG.md"
+    ]
+  }
+}
