@@ -7,6 +7,9 @@
   <a href="https://github.com/PrefectHQ/fastmcp"><img src="https://img.shields.io/badge/FastMCP-3.2-7c5cfc?style=flat-square" alt="FastMCP"></a>
 </p>
 
+
+> 📖 **[Installation Guide](INSTALL.md)** — quick start, manual setup, and troubleshooting
+
 Beautiful React Tailwind VR Worlds Control Center integrating Avatar MCP, Blender MCP, VRChat MCP, Resonite MCP, OSC MCP, Unity3D MCP with ikubaysan dual-STT AI chatbot architecture.
 
 ## Quick Start
