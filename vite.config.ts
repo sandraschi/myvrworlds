@@ -11,6 +11,7 @@ export default defineConfig({
     },
   },
   server: {
+    allowedHosts: ['goliath'],
     port: 11101, // MyVRWorlds: VR MCP Control Center
     host: true,
     proxy: {
