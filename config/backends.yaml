@@ -1,0 +1,67 @@
+# vrworlds-mcp backend registry — on-demand aggregation, no always-on daemons.
+# Ports: vrworlds-mcp frontend 11239 / backend 11240 / mcp 11241 (claim --apply pending).
+# Voice: speech-mcp owns wake+STT per VOICE_COMMAND_BUS.md; this repo is a member only.
+version: 1
+defaults:
+  transport: stdio
+  launch_runner: "uv run python -m"
+  idle_ttl_seconds: 300
+  health_cache_seconds: 30
+backends:
+  vrchat:
+    repo: vrchat-mcp
+    module: vrchat_mcp
+    tier: 0
+    role: "world runtime: instances, avatars, OSC params"
+  resonite:
+    repo: resonite-mcp
+    module: resonite_mcp
+    tier: 0
+    role: "world runtime: sessions, Logix"
+  overte:
+    repo: overte-mcp
+    module: overte_mcp
+    tier: 0
+    role: "world runtime: open metaverse leg (beta)"
+  avatar:
+    repo: avatar-mcp
+    module: avatar_mcp
+    tier: 1
+    role: "realtime avatar control and animation"
+  vroidstudio:
+    repo: vroidstudio-mcp
+    module: vroidstudio_mcp
+    tier: 1
+    role: "avatar authoring via GUI automation"
+    note: "requires VRoid Studio GUI running; pywinauto-driven"
+  blender:
+    repo: blender-mcp
+    module: blender_mcp
+    tier: 1
+    role: "modeling and rendering via natural language"
+    note: "requires Blender install; heavy wrappee"
+  unity3d:
+    repo: unity3d-mcp
+    module: unity3d_mcp
+    tier: 1
+    role: "Unity VR world development"
+  godot:
+    repo: godot-mcp
+    module: godot_mcp
+    tier: 1
+    role: "Godot world development; needs running editor (T3-desktop)"
+  worldlabs:
+    repo: worldlabs-mcp
+    module: worldlabs_mcp
+    tier: 1
+    role: "AI world-gen: text/image/video to navigable Gaussian-splat worlds"
+  osc:
+    repo: osc-mcp
+    module: osc_mcp
+    tier: 2
+    role: "transport glue: OSC for VRChat, TouchDesigner, Resolume, audio tools"
+  speech:
+    repo: speech-mcp
+    module: speech_mcp
+    tier: 2
+    role: "voice ingress (wake+STT); vrworlds-mcp is a member, never duplicates wake"
