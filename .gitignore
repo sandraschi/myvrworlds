@@ -1,0 +1,27 @@
+# Fleet gitignore — vrworlds-mcp (keep in sync with GITIGNORE_STANDARDS.md)
+.venv/
+.venv*/
+__pycache__/
+*.pyc
+*.pyo
+node_modules/
+**/node_modules/
+webapp/dist/
+dist/
+*.egg-info/
+.env
+!.env.example
+*.sqlite3
+*.db
+*.db-*
+data/
+*.mcpb
+mcpb/src/
+*.bak
+*.bak.*
+reports/
+!.gitignore
+!docs/assess-reports/
+target/
+.vscode/
+.idea/
